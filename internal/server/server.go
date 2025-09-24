@@ -66,6 +66,49 @@ type ArgocdApplication struct {
 	} `json:"status"`
 }
 
+// Cluster represents an ArgoCD cluster
+type Cluster struct {
+	Name   string `json:"name"`
+	Server string `json:"server"`
+	Config struct {
+		BearerToken     string            `json:"bearerToken,omitempty"`
+		TLSClientConfig struct {
+			Insecure   bool   `json:"insecure,omitempty"`
+			ServerName string `json:"serverName,omitempty"`
+			CertData   string `json:"certData,omitempty"`
+			KeyData    string `json:"keyData,omitempty"`
+			CAData     string `json:"caData,omitempty"`
+		} `json:"tlsClientConfig,omitempty"`
+		AWSAuthConfig struct {
+			ClusterName string `json:"clusterName,omitempty"`
+			RoleARN     string `json:"roleArn,omitempty"`
+		} `json:"awsAuthConfig,omitempty"`
+		ExecProviderConfig struct {
+			Command string   `json:"command,omitempty"`
+			Args    []string `json:"args,omitempty"`
+			Env     map[string]string `json:"env,omitempty"`
+		} `json:"execProviderConfig,omitempty"`
+	} `json:"config"`
+	ConnectionState struct {
+		Status     string `json:"status"`
+		Message    string `json:"message,omitempty"`
+		ModifiedAt string `json:"modifiedAt,omitempty"`
+	} `json:"connectionState,omitempty"`
+	ServerVersion string            `json:"serverVersion,omitempty"`
+	Info          struct {
+		ApplicationsCount int `json:"applicationsCount,omitempty"`
+		ServerVersion     string `json:"serverVersion,omitempty"`
+		CacheInfo         struct {
+			ResourcesCount int `json:"resourcesCount,omitempty"`
+			APIsCount      int `json:"apisCount,omitempty"`
+		} `json:"cacheInfo,omitempty"`
+	} `json:"info,omitempty"`
+}
+
+// ClusterList represents a list of ArgoCD clusters
+type ClusterList struct {
+	Items []Cluster `json:"items"`
+}
 // ArgocdApplicationList represents a list of ArgoCD applications
 type ArgocdApplicationList struct {
 	Items []ArgocdApplication `json:"items"`
@@ -153,6 +196,12 @@ func (s *MCPServer) setupHandlers() {
 		Description: "List of all ArgoCD applications",
 		MIMEType:    "application/json",
 	}, s.handleApplicationsResource)
+	s.server.AddResource(&mcp.Resource{
+		URI:         "argocd://clusters",
+		Name:        "ArgoCD Clusters",
+		Description: "List of all ArgoCD clusters",
+		MIMEType:    "application/json",
+	}, s.handleClusterResource)
 }
 
 // Run starts the ArgoCD MCP server
@@ -191,9 +240,6 @@ func (s *MCPServer) handleApplicationsResource(ctx context.Context, req *mcp.Rea
 		},
 	}, nil
 }
-
-// ArgoCD API functions
-
 func (s *MCPServer) getArgocdApplications(ctx context.Context) (*ArgocdApplicationList, error) {
 	url := fmt.Sprintf("%s/api/v1/applications", s.argocdCfg.ServerURL)
 
@@ -231,6 +277,66 @@ func (s *MCPServer) getArgocdApplications(ctx context.Context) (*ArgocdApplicati
 
 	return &appList, nil
 }
+
+func (s *MCPServer) handleClusterResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	s.updateRequestStats()
+
+	clusters, err := s.getClusters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get clusters: %w", err)
+	}
+	clustersJSON, err := json.MarshalIndent(clusters, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal clusters: %w", err)
+	}
+	return &mcp.ReadResourceResult{
+		Contents: []*mcp.ResourceContents{
+			{
+				URI: 	"argocd://clusters",
+				MIMEType: "application/json",
+				Text:	string(clustersJSON),
+			},
+		},
+	}, nil
+}
+
+func (s *MCPServer) getClusters(ctx context.Context) (*ClusterList, error) {
+	url := fmt.Sprintf("%s/api/v1/clusters", s.argocdCfg.ServerURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add authorization header if token is available
+	if s.argocdCfg.AuthToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.argocdCfg.AuthToken)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ArgoCD API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var clusterList ClusterList
+	if err := json.Unmarshal(body, &clusterList); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	return &clusterList, nil
+}
+
 
 // Helper functions
 
