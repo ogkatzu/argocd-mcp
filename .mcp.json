@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "argocd-mcp": {
+      "command": "/Users/skatz/argo_mcp/build/argocd-mcp-server",
+      "args": []
+    }
+  }
+}
