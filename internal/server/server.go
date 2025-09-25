@@ -181,7 +181,7 @@ func NewMCPServer() *MCPServer {
 func (s *MCPServer) setupHandlers() {
 	// TODO: Add ArgoCD-specific tools here
 	// Examples:
-	// - list_applications
+	// - list_applications - Done
 	// - get_application_status
 	// - sync_application
 	// - create_application
@@ -189,7 +189,7 @@ func (s *MCPServer) setupHandlers() {
 	// - get_cluster_info
 	// - etc.
 
-	// Add ArgoCD applications resource
+	
 	s.server.AddResource(&mcp.Resource{
 		URI:         "argocd://applications",
 		Name:        "ArgoCD Applications",
